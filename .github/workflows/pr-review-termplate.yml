@@ -1,0 +1,197 @@
+﻿name: PR Review Validation
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  validate-pr-template:
+    name: Validate PR Template
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Check PR Description
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const body = pr.body || '';
+            
+            // Check if PR uses the template
+            const requiredSections = [
+              'Pull Request Information',
+              'Internal ID:',
+              'Public Issue:',
+              'Risk Classification:',
+              'Branch Protection Requirements',
+              'Definition of Done Checklist',
+              'Approval'
+            ];
+            
+            const missingSections = requiredSections.filter(section => !body.includes(section));
+            
+            if (missingSections.length > 0) {
+              core.setFailed(`PR description is missing required sections: ${missingSections.join(', ')}`);
+              return;
+            }
+            
+            // Check if Internal ID is filled
+            if (body.includes('[Internal tracking ID]')) {
+              core.warning('Internal ID is not filled in');
+            }
+            
+            // Check if linked issue exists
+            if (body.includes('Fixes #[issue number]') || body.includes('[issue number]')) {
+              core.setFailed('PR must be linked to an issue. Please update "Public Issue" field.');
+              return;
+            }
+            
+            // Check if Risk Classification is selected
+            const riskPattern = /Risk Classification:[\s\S]*?-\s*\[x\]/i;
+            if (!riskPattern.test(body)) {
+              core.warning('Risk Classification is not selected');
+            }
+            
+            core.info('PR template validation passed');
+
+      - name: Check Review Approval
+        if: github.event_name == 'pull_request_review'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const review = context.payload.review;
+            const pr = context.payload.pull_request;
+            
+            if (review.state === 'approved') {
+              try {
+                // Add approved label
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: pr.number,
+                  labels: ['approved']
+                });
+                
+                core.info(`PR #${pr.number} has been approved by ${review.user.login}`);
+              } catch (error) {
+                core.warning(`Could not add approved label: ${error.message}`);
+              }
+            }
+
+  enforce-checklist:
+    name: Enforce DoD Checklist
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && (github.event.action == 'opened' || github.event.action == 'edited')
+    
+    steps:
+      - name: Check Definition of Done
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const body = pr.body || '';
+            
+            // Count checked items in DoD Checklist
+            const dodSection = body.match(/##\s*Definition of Done Checklist([\s\S]*?)(?=##|$)/);
+            if (!dodSection) {
+              core.warning('Definition of Done Checklist section not found');
+              return;
+            }
+            
+            const checkedItems = (dodSection[1].match(/-\s*\[x\]/gi) || []).length;
+            const uncheckedItems = (dodSection[1].match(/-\s*\[\s*\]/gi) || []).length;
+            const totalItems = checkedItems + uncheckedItems;
+            
+            if (totalItems === 0) {
+              core.warning('No checklist items found in Definition of Done');
+              return;
+            }
+            
+            const completionRate = (checkedItems / totalItems * 100).toFixed(1);
+            
+            core.info(`DoD Checklist: ${checkedItems}/${totalItems} items checked (${completionRate}%)`);
+            
+            // Check if comment already exists
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number
+            });
+            
+            const botComment = comments.data.find(
+              comment => comment.user.type === 'Bot' && 
+                         comment.body.includes('## Definition of Done Status')
+            );
+            
+            const commentBody = `## Definition of Done Status\n\n` +
+                    `Progress: ${checkedItems}/${totalItems} items completed (${completionRate}%)\n\n` +
+                    (completionRate < 100 ? '⚠️ Please complete all checklist items before requesting review.' : '✅ All checklist items completed!');
+            
+            try {
+              if (botComment) {
+                // Update existing comment
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: botComment.id,
+                  body: commentBody
+                });
+              } else {
+                // Add new comment
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: pr.number,
+                  body: commentBody
+                });
+              }
+            } catch (error) {
+              core.warning(`Could not create/update comment: ${error.message}`);
+            }
+            
+            // Set status check
+            if (completionRate < 100) {
+              core.warning(`DoD Checklist incomplete: ${completionRate}% completed`);
+            }
+
+  auto-assign-reviewers:
+    name: Auto-assign Reviewers
+    runs-on: ubuntu-latest
+    if: github.event.action == 'opened'
+    
+    steps:
+      - name: Assign Reviewers
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            
+            // Define reviewers based on your team structure
+            // TODO: Replace with actual GitHub usernames
+            const reviewers = ['reviewer1', 'reviewer2'];
+            
+            // Filter out PR author and invalid usernames
+            const validReviewers = reviewers.filter(r => 
+              r !== pr.user.login && 
+              !r.startsWith('reviewer')  // Remove placeholder usernames
+            );
+            
+            if (validReviewers.length === 0) {
+              core.warning('No valid reviewers configured. Please update the reviewers list in the workflow file.');
+              return;
+            }
+            
+            try {
+              await github.rest.pulls.requestReviewers({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number,
+                reviewers: validReviewers
+              });
+              
+              core.info(`Reviewers assigned: ${validReviewers.join(', ')}`);
+            } catch (error) {
+              core.warning(`Could not assign reviewers: ${error.message}`);
+            }
