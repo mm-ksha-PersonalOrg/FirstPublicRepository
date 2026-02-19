@@ -2,7 +2,7 @@
 
 on:
   pull_request:
-    types: [opened, edited, reopened, synchronize]
+    types: [opened, edited, reopened, synchronize,ready_for_review]
   pull_request_review:
     types: [submitted]
 
@@ -23,6 +23,7 @@ jobs:
             const requiredSections = [
               'Pull Request Information',
               'Internal ID:',
+              'Private Issue:',
               'Public Issue:',
               'Risk Classification:',
               'Branch Protection Requirements',
@@ -154,44 +155,4 @@ jobs:
             // Set status check
             if (completionRate < 100) {
               core.warning(`DoD Checklist incomplete: ${completionRate}% completed`);
-            }
-
-  auto-assign-reviewers:
-    name: Auto-assign Reviewers
-    runs-on: ubuntu-latest
-    if: github.event.action == 'opened'
-    
-    steps:
-      - name: Assign Reviewers
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const pr = context.payload.pull_request;
-            
-            // Define reviewers based on your team structure
-            // TODO: Replace with actual GitHub usernames
-            const reviewers = ['reviewer1', 'reviewer2'];
-            
-            // Filter out PR author and invalid usernames
-            const validReviewers = reviewers.filter(r => 
-              r !== pr.user.login && 
-              !r.startsWith('reviewer')  // Remove placeholder usernames
-            );
-            
-            if (validReviewers.length === 0) {
-              core.warning('No valid reviewers configured. Please update the reviewers list in the workflow file.');
-              return;
-            }
-            
-            try {
-              await github.rest.pulls.requestReviewers({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: pr.number,
-                reviewers: validReviewers
-              });
-              
-              core.info(`Reviewers assigned: ${validReviewers.join(', ')}`);
-            } catch (error) {
-              core.warning(`Could not assign reviewers: ${error.message}`);
             }

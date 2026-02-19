@@ -1,6 +1,7 @@
 ## Pull Request Information
 
 **Internal ID:** [Internal tracking ID]  
+**Private Issue:** Fixes #[issue number]
 **Public Issue:** Fixes #[issue number]  
 **Risk Classification:** [ ] Low / [ ] Medium / [ ] High
 
