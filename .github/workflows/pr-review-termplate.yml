@@ -70,7 +70,6 @@ jobs:
             const body = pr.body || '';
             
             // Count checked items in DoD Checklist
-            const dodSection = body.match(/##\s*Definition of Done Checklist([\s\S]*?)(?=##|$)/);
             const dodSection = body.match(/##\s*Definition of Done Checklist([\s\S]*?)(?=##\s+[^#]|$)/);
             if (!dodSection) {
               core.warning('Definition of Done Checklist section not found');
@@ -78,7 +77,6 @@ jobs:
             }
             
             const checkedItems = (dodSection[1].match(/-\s*\[x\]/gi) || []).length;
-            const uncheckedItems = (dodSection[1].match(/-\s*\[\s*\]/gi) || []).length;
             const uncheckedItems = (dodSection[1].match(/-\s*\[\s+\]/gi) || []).length;
             const totalItems = checkedItems + uncheckedItems;
             
