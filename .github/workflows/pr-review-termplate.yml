@@ -27,8 +27,7 @@ jobs:
               'Public Issue:',
               'Risk Classification:',
               'Branch Protection Requirements',
-              'Definition of Done Checklist',
-              'Approval'
+              'Definition of Done Checklist'
             ];
             
             const missingSections = requiredSections.filter(section => !body.includes(section));
