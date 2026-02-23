@@ -1,4 +1,4 @@
-﻿name: PR Review Validation
+name: PR Review Validation
 
 on:
   pull_request:
@@ -27,7 +27,8 @@ jobs:
               'Public Issue:',
               'Risk Classification:',
               'Branch Protection Requirements',
-              'Definition of Done Checklist'
+              'Definition of Done Checklist',
+              'Approval'
             ];
             
             const missingSections = requiredSections.filter(section => !body.includes(section));
@@ -70,6 +71,7 @@ jobs:
             
             // Count checked items in DoD Checklist
             const dodSection = body.match(/##\s*Definition of Done Checklist([\s\S]*?)(?=##|$)/);
+            const dodSection = body.match(/##\s*Definition of Done Checklist([\s\S]*?)(?=##\s+[^#]|$)/);
             if (!dodSection) {
               core.warning('Definition of Done Checklist section not found');
               return;
@@ -77,10 +79,12 @@ jobs:
             
             const checkedItems = (dodSection[1].match(/-\s*\[x\]/gi) || []).length;
             const uncheckedItems = (dodSection[1].match(/-\s*\[\s*\]/gi) || []).length;
+            const uncheckedItems = (dodSection[1].match(/-\s*\[\s+\]/gi) || []).length;
             const totalItems = checkedItems + uncheckedItems;
             
             if (totalItems === 0) {
               core.warning('No checklist items found in Definition of Done');
+              core.info('DoD Section content: ' + dodSection[1].substring(0, 200));
               return;
             }
             
