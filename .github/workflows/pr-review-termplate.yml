@@ -156,3 +156,56 @@ jobs:
             if (completionRate < 100) {
               core.warning(`DoD Checklist incomplete: ${completionRate}% completed`);
             }
+
+
+  check-linked-issue:
+    name: Validate PR Linked Issue
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+      - name: Setup PR context
+        id: setup
+        run: |
+          echo "pr_number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+      
+      - name: Generate GitHub token
+        id: generate-token
+        run: |
+          echo "token=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_OUTPUT
+      
+      - name: Check if PR is linked to an issue
+        id: check-linked-issue
+        run: |
+          PR_NUMBER=${{ steps.setup.outputs.pr_number }}
+          REPO=${{ github.repository }}
+          echo "::group::Checking PR #$PR_NUMBER for linked issues"
+          echo "::notice title=PR Validation::Checking linked issues for PR #$PR_NUMBER"
+          # Use gh pr view to get closing issues references
+          RESULT=$(gh pr view $PR_NUMBER --repo "$REPO" --json closingIssuesReferences)
+          ISSUE_COUNT=$(echo "$RESULT" | jq '.closingIssuesReferences | length')
+          if [ "$ISSUE_COUNT" -gt 0 ]; then
+            echo "✅ Found $ISSUE_COUNT linked issue(s)"
+            echo "$RESULT" | jq -r '.closingIssuesReferences[] | "  • Issue #\(.number): \(.title) (\(.url))"'
+            # Extract first issue number for further validation
+            ISSUE_NUMBER=$(echo "$RESULT" | jq '.closingIssuesReferences[0].number')
+            echo "::notice title=Linked Issue Found::Using issue #$ISSUE_NUMBER for downstream validation"
+            echo "issue_number=$ISSUE_NUMBER" >> $GITHUB_OUTPUT
+            echo "::endgroup::"
+            exit 0
+          else
+            echo "::endgroup::"
+            echo "::notice title=Linked Issue Missing::No linked issues detected for PR #$PR_NUMBER"
+            echo "::error title=Validation Failed: Missing Linked Issue::❌ This PR is not linked to any issue."
+            echo ""
+            echo "**Why this check failed:**"
+            echo "This repository requires all PRs to be linked to at least one issue for tracking and documentation purposes."
+            echo ""
+            echo "**How to fix it:**"
+            echo "Link an issue to this PR using the GitHub UI"
+            echo ""
+            echo "Once linked, the PR will automatically show the linked issue."
+            exit 1
+          fi
+        env:
+          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
