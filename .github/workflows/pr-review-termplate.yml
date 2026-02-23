@@ -68,26 +68,20 @@ jobs:
             const pr = context.payload.pull_request;
             const body = pr.body || '';
             
-            core.info('Full PR body length: ' + body.length);
             
             // Count checked items in DoD Checklist
             const dodSection = body.match(/##\s*Definition of Done Checklist([\s\S]*?)(?=\n##\s+[^#]|$)/i);
             if (!dodSection) {
               core.warning('Definition of Done Checklist section not found');
-              core.info('Available sections: ' + body.match(/##\s+[^\n]+/g));
               return;
             }
             
-            core.info('DoD Section found, length: ' + dodSection[1].length);
-            core.info('DoD Section preview: ' + dodSection[1].substring(0, 300));
             
             // Match checkboxes with flexible whitespace
             const checkedItems = (dodSection[1].match(/-\s*\[x\]/gi) || []).length;
             const uncheckedItems = (dodSection[1].match(/-\s*\[\s*\]/gi) || []).length;
             const totalItems = checkedItems + uncheckedItems;
             
-            core.info(`Found ${checkedItems} checked items`);
-            core.info(`Found ${uncheckedItems} unchecked items`);
             
             if (totalItems === 0) {
               core.warning('No checklist items found in Definition of Done');
@@ -113,28 +107,7 @@ jobs:
             const commentBody = `## Definition of Done Status\n\n` +
                     `Progress: ${checkedItems}/${totalItems} items completed (${completionRate}%)\n\n` +
                     (completionRate < 100 ? '⚠️ Please complete all checklist items before requesting review.' : '✅ All checklist items completed!');
-            
-            try {
-              if (botComment) {
-                // Update existing comment
-                await github.rest.issues.updateComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  comment_id: botComment.id,
-                  body: commentBody
-                });
-              } else {
-                // Add new comment
-                await github.rest.issues.createComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: pr.number,
-                  body: commentBody
-                });
-              }
-            } catch (error) {
-              core.warning(`Could not create/update comment: ${error.message}`);
-            }
+          
             
             // Set status check
             if (completionRate < 100) {
