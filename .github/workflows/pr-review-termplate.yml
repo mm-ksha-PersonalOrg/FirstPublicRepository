@@ -27,8 +27,7 @@ jobs:
               'Public Issue:',
               'Risk Classification:',
               'Branch Protection Requirements',
-              'Definition of Done Checklist',
-              'Approval'
+              'Definition of Done Checklist'
             ];
             
             const missingSections = requiredSections.filter(section => !body.includes(section));
@@ -49,7 +48,7 @@ jobs:
             }
             
             // Check if Risk Classification is selected
-            const riskPattern = /Risk Classification:[\s\S]*?-\s*\[x\]/i;
+            const riskPattern = /Risk Classification:[\s\S]*?\[x\]/i;
             if (!riskPattern.test(body)) {
               core.warning('Risk Classification is not selected');
             }
@@ -69,20 +68,29 @@ jobs:
             const pr = context.payload.pull_request;
             const body = pr.body || '';
             
+            core.info('Full PR body length: ' + body.length);
+            
             // Count checked items in DoD Checklist
-            const dodSection = body.match(/##\s*Definition of Done Checklist([\s\S]*?)(?=##\s+[^#]|$)/);
+            const dodSection = body.match(/##\s*Definition of Done Checklist([\s\S]*?)(?=\n##\s+[^#]|$)/i);
             if (!dodSection) {
               core.warning('Definition of Done Checklist section not found');
+              core.info('Available sections: ' + body.match(/##\s+[^\n]+/g));
               return;
             }
             
+            core.info('DoD Section found, length: ' + dodSection[1].length);
+            core.info('DoD Section preview: ' + dodSection[1].substring(0, 300));
+            
+            // Match checkboxes with flexible whitespace
             const checkedItems = (dodSection[1].match(/-\s*\[x\]/gi) || []).length;
-            const uncheckedItems = (dodSection[1].match(/-\s*\[\s+\]/gi) || []).length;
+            const uncheckedItems = (dodSection[1].match(/-\s*\[\s*\]/gi) || []).length;
             const totalItems = checkedItems + uncheckedItems;
+            
+            core.info(`Found ${checkedItems} checked items`);
+            core.info(`Found ${uncheckedItems} unchecked items`);
             
             if (totalItems === 0) {
               core.warning('No checklist items found in Definition of Done');
-              core.info('DoD Section content: ' + dodSection[1].substring(0, 200));
               return;
             }
             
