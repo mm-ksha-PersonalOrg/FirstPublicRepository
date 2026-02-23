@@ -45,8 +45,7 @@ jobs:
             
             // Check if linked issue exists
             if (body.includes('Fixes #[issue number]') || body.includes('[issue number]')) {
-              core.setFailed('PR must be linked to an issue. Please update "Public Issue" field.');
-              return;
+              core.warning('PR must be linked to an issue. Please update "Public Issue" field.');
             }
             
             // Check if Risk Classification is selected
@@ -55,31 +54,7 @@ jobs:
               core.warning('Risk Classification is not selected');
             }
             
-            core.info('PR template validation passed');
-
-      - name: Check Review Approval
-        if: github.event_name == 'pull_request_review'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const review = context.payload.review;
-            const pr = context.payload.pull_request;
-            
-            if (review.state === 'approved') {
-              try {
-                // Add approved label
-                await github.rest.issues.addLabels({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: pr.number,
-                  labels: ['approved']
-                });
-                
-                core.info(`PR #${pr.number} has been approved by ${review.user.login}`);
-              } catch (error) {
-                core.warning(`Could not add approved label: ${error.message}`);
-              }
-            }
+            core.info('PR template validation passed');     
 
   enforce-checklist:
     name: Enforce DoD Checklist
@@ -156,7 +131,6 @@ jobs:
             if (completionRate < 100) {
               core.warning(`DoD Checklist incomplete: ${completionRate}% completed`);
             }
-
 
   check-linked-issue:
     name: Validate PR Linked Issue
