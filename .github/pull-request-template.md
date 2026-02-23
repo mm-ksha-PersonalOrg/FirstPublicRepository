@@ -17,6 +17,8 @@
 
 ---
 
+<!-- If a DoD check does not apply to your PR, you can strike it out by surrounding the text with ~~double tildes~~. Add a reason why the check does not apply-->
+
 ## Definition of Done Checklist
 
 ### Requirements
@@ -33,7 +35,6 @@
 - [ ] Build server passes
 
 ### Review & Documentation
-- [ ] Code review completed
 - [ ] Documentation updated (code comments, wiki, README if needed)
 
 ---
