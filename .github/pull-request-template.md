@@ -2,8 +2,7 @@
 
 **Internal ID:** [Internal tracking ID]  
 **Private Issue:** Fixes #[issue number]
-**Public Issue:** Fixes #[issue number]  
-**Risk Classification:** [ ] Low / [ ] Medium / [ ] High
+**Public Issue:** Fixes #[issue number]
 
 **Summary:**
 <!-- Briefly describe what this PR changes and why -->

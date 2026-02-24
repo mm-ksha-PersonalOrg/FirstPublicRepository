@@ -25,7 +25,6 @@ jobs:
               'Internal ID:',
               'Private Issue:',
               'Public Issue:',
-              'Risk Classification:',
               'Branch Protection Requirements',
               'Definition of Done Checklist'
             ];
@@ -76,12 +75,41 @@ jobs:
               return;
             }
             
+            const dodContent = dodSection[1];
             
             // Match checkboxes with flexible whitespace
-            const checkedItems = (dodSection[1].match(/-\s*\[x\]/gi) || []).length;
-            const uncheckedItems = (dodSection[1].match(/-\s*\[\s*\]/gi) || []).length;
-            const totalItems = checkedItems + uncheckedItems;
+            const allCheckedItems = (dodContent.match(/-\s*\[x\]/gi) || []).length;
+            const allUncheckedItems = (dodContent.match(/-\s*\[\s*\]/gi) || []).length;
             
+            // Find items marked with ~ (strikethrough) - these are not required
+            const strikethroughPattern = /-\s*\[[x\s]*\]\s*~[^~]+~/gi;
+            const notRequiredItems = (dodContent.match(strikethroughPattern) || []).length;
+            
+            // Alternative pattern: items that start with ~ before the checkbox
+            const altStrikethroughPattern = /~\s*-\s*\[[x\s]*\][^~]+~/gi;
+            const notRequiredItemsAlt = (dodContent.match(altStrikethroughPattern) || []).length;
+            
+            // Total not required items
+            const totalNotRequired = notRequiredItems + notRequiredItemsAlt;
+            
+            // Calculate required items only
+            const totalItems = allCheckedItems + allUncheckedItems - totalNotRequired;
+            
+            // Count checked items that are not marked as not required
+            let checkedItems = allCheckedItems;
+            
+            // Subtract checked items that are marked with strikethrough
+            const checkedStrikethroughPattern = /-\s*\[x\]\s*~[^~]+~/gi;
+            const checkedNotRequired = (dodContent.match(checkedStrikethroughPattern) || []).length;
+            const altCheckedStrikethroughPattern = /~\s*-\s*\[x\][^~]+~/gi;
+            const altCheckedNotRequired = (dodContent.match(altCheckedStrikethroughPattern) || []).length;
+            
+            checkedItems = checkedItems - checkedNotRequired - altCheckedNotRequired;
+            
+            core.info(`Total checklist items: ${allCheckedItems + allUncheckedItems}`);
+            core.info(`Not required items (marked with ~): ${totalNotRequired}`);
+            core.info(`Required items: ${totalItems}`);
+            core.info(`Checked required items: ${checkedItems}`);
             
             if (totalItems === 0) {
               core.warning('No checklist items found in Definition of Done');
@@ -104,10 +132,36 @@ jobs:
                          comment.body.includes('## Definition of Done Status')
             );
             
-            const commentBody = `## Definition of Done Status\n\n` +
-                    `Progress: ${checkedItems}/${totalItems} items completed (${completionRate}%)\n\n` +
-                    (completionRate < 100 ? '⚠️ Please complete all checklist items before requesting review.' : '✅ All checklist items completed!');
-          
+            let commentBody = `## Definition of Done Status\n\n` +
+                    `Progress: ${checkedItems}/${totalItems} items completed (${completionRate}%)`;
+            
+            if (totalNotRequired > 0) {
+              commentBody += `\n_${totalNotRequired} item(s) marked as not required (~) and excluded from completion rate_`;
+            }
+            
+            commentBody += `\n\n` + (completionRate < 100 ? '⚠️ Please complete all checklist items before requesting review.' : '✅ All checklist items completed!');
+            
+            try {
+              if (botComment) {
+                // Update existing comment
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: botComment.id,
+                  body: commentBody
+                });
+              } else {
+                // Add new comment
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: pr.number,
+                  body: commentBody
+                });
+              }
+            } catch (error) {
+              core.warning(`Could not create/update comment: ${error.message}`);
+            }
             
             // Set status check
             if (completionRate < 100) {
