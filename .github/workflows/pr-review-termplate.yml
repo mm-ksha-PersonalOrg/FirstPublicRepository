@@ -1,12 +1,18 @@
 name: PR Review Validation
 
+# Trigger this workflow on pull request events and reviews
 on:
   pull_request:
-    types: [opened, edited, reopened, synchronize,ready_for_review]
+    types: [opened, edited, reopened, synchronize, ready_for_review]
   pull_request_review:
     types: [submitted]
 
 jobs:
+  # ============================================================================
+  # Job 1: Validate PR Template Structure
+  # ============================================================================
+  # This job ensures that the PR description contains all required sections
+  # from the PR template and validates that key fields are filled in.
   validate-pr-template:
     name: Validate PR Template
     runs-on: ubuntu-latest
@@ -19,7 +25,7 @@ jobs:
             const pr = context.payload.pull_request;
             const body = pr.body || '';
             
-            // Check if PR uses the template
+            // Define required sections that must be present in the PR description
             const requiredSections = [
               'Pull Request Information',
               'Internal ID:',
@@ -29,6 +35,7 @@ jobs:
               'Definition of Done Checklist'
             ];
             
+            // Check for missing sections
             const missingSections = requiredSections.filter(section => !body.includes(section));
             
             if (missingSections.length > 0) {
@@ -36,23 +43,28 @@ jobs:
               return;
             }
             
-            // Check if Internal ID is filled
+            // Validate that Internal ID field has been filled out
             if (body.includes('[Internal tracking ID]')) {
               core.warning('Internal ID is not filled in');
             }
             
-            // Check if linked issue exists
+            // Validate that issue linking fields are properly filled
             if (body.includes('Fixes #[issue number]') || body.includes('[issue number]')) {
               core.warning('PR must be linked to an issue. Please update "Public Issue" field.');
             }
             
-            
-            
-            core.info('PR template validation passed');     
+            core.info('PR template validation passed');
 
+  # ============================================================================
+  # Job 2: Enforce Definition of Done (DoD) Checklist
+  # ============================================================================
+  # This job tracks completion of the DoD checklist items and posts/updates
+  # a comment showing progress. Items marked with strikethrough (~) are
+  # considered optional and excluded from the completion rate.
   enforce-checklist:
     name: Enforce DoD Checklist
     runs-on: ubuntu-latest
+    # Only run when PR is opened or edited
     if: github.event_name == 'pull_request' && (github.event.action == 'opened' || github.event.action == 'edited')
     
     steps:
@@ -63,9 +75,10 @@ jobs:
             const pr = context.payload.pull_request;
             const body = pr.body || '';
             
-            
-            // Count checked items in DoD Checklist
+            // Extract the Definition of Done section from PR description
+            // Matches from "## Definition of Done Checklist" until next ## section or end
             const dodSection = body.match(/##\s*Definition of Done Checklist([\s\S]*?)(?=\n##\s+[^#]|$)/i);
+            
             if (!dodSection) {
               core.warning('Definition of Done Checklist section not found');
               return;
@@ -73,133 +86,132 @@ jobs:
             
             const dodContent = dodSection[1];
             
-            // Match checkboxes with flexible whitespace
+            // ----------------------------------------------------------------
+            // Count all checkbox items (both checked and unchecked)
+            // ----------------------------------------------------------------
+            // Matches patterns like: - [x] or - [ ]
             const allCheckedItems = (dodContent.match(/-\s*\[x\]/gi) || []).length;
             const allUncheckedItems = (dodContent.match(/-\s*\[\s*\]/gi) || []).length;
             
-            // Find items marked with ~ (strikethrough) - these are not required
+            // ----------------------------------------------------------------
+            // Identify items marked as "not required" using strikethrough (~)
+            // ----------------------------------------------------------------
+            // Pattern 1: Checkbox followed by strikethrough text
+            // Example: - [ ] ~Optional item~
             const strikethroughPattern = /-\s*\[[x\s]*\]\s*~[^~]+~/gi;
             const notRequiredItems = (dodContent.match(strikethroughPattern) || []).length;
             
-            // Alternative pattern: items that start with ~ before the checkbox
+            // Pattern 2: Entire line with strikethrough
+            // Example: ~- [ ] Optional item~
             const altStrikethroughPattern = /~\s*-\s*\[[x\s]*\][^~]+~/gi;
             const notRequiredItemsAlt = (dodContent.match(altStrikethroughPattern) || []).length;
             
-            // Total not required items
+            // Total optional items to exclude from completion calculation
             const totalNotRequired = notRequiredItems + notRequiredItemsAlt;
             
-            // Calculate required items only
+            // ----------------------------------------------------------------
+            // Calculate completion rate based on required items only
+            // ----------------------------------------------------------------
+            // Total required items = All items - Optional items
             const totalItems = allCheckedItems + allUncheckedItems - totalNotRequired;
             
-            // Count checked items that are not marked as not required
+            // Start with all checked items
             let checkedItems = allCheckedItems;
             
-            // Subtract checked items that are marked with strikethrough
+            // Subtract checked items that are marked as optional (strikethrough)
             const checkedStrikethroughPattern = /-\s*\[x\]\s*~[^~]+~/gi;
             const checkedNotRequired = (dodContent.match(checkedStrikethroughPattern) || []).length;
+            
             const altCheckedStrikethroughPattern = /~\s*-\s*\[x\][^~]+~/gi;
             const altCheckedNotRequired = (dodContent.match(altCheckedStrikethroughPattern) || []).length;
             
+            // Final count of checked required items
             checkedItems = checkedItems - checkedNotRequired - altCheckedNotRequired;
             
+            // ----------------------------------------------------------------
+            // Log detailed information for debugging
+            // ----------------------------------------------------------------
             core.info(`Total checklist items: ${allCheckedItems + allUncheckedItems}`);
             core.info(`Not required items (marked with ~): ${totalNotRequired}`);
             core.info(`Required items: ${totalItems}`);
             core.info(`Checked required items: ${checkedItems}`);
             
+            // Early exit if no checklist items found
             if (totalItems === 0) {
               core.warning('No checklist items found in Definition of Done');
               return;
             }
             
+            // Calculate percentage completion
             const completionRate = (checkedItems / totalItems * 100).toFixed(1);
             
             core.info(`DoD Checklist: ${checkedItems}/${totalItems} items checked (${completionRate}%)`);
             
-            // Check if comment already exists
-            const comments = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: pr.number
-            });
             
-            const botComment = comments.data.find(
-              comment => comment.user.type === 'Bot' && 
-                         comment.body.includes('## Definition of Done Status')
-            );
             
-            let commentBody = `## Definition of Done Status\n\n` +
-                    `Progress: ${checkedItems}/${totalItems} items completed (${completionRate}%)`;
-            
-            if (totalNotRequired > 0) {
-              commentBody += `\n_${totalNotRequired} item(s) marked as not required (~) and excluded from completion rate_`;
-            }
-            
-            commentBody += `\n\n` + (completionRate < 100 ? '⚠️ Please complete all checklist items before requesting review.' : '✅ All checklist items completed!');
-            
-            try {
-              if (botComment) {
-                // Update existing comment
-                await github.rest.issues.updateComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  comment_id: botComment.id,
-                  body: commentBody
-                });
-              } else {
-                // Add new comment
-                await github.rest.issues.createComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: pr.number,
-                  body: commentBody
-                });
-              }
-            } catch (error) {
-              core.warning(`Could not create/update comment: ${error.message}`);
-            }
-            
-            // Set status check
+            // ----------------------------------------------------------------
+            // Set workflow status based on completion
+            // ----------------------------------------------------------------
+            // Issue a warning (not failure) if checklist is incomplete
             if (completionRate < 100) {
               core.warning(`DoD Checklist incomplete: ${completionRate}% completed`);
             }
 
+  # ============================================================================
+  # Job 3: Validate PR is Linked to an Issue
+  # ============================================================================
+  # This job ensures that every PR is linked to at least one issue for
+  # proper tracking and documentation purposes. It fails the workflow if
+  # no linked issues are found.
   check-linked-issue:
     name: Validate PR Linked Issue
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     
     steps:
+      # Step 1: Extract PR number from context
       - name: Setup PR context
         id: setup
         run: |
           echo "pr_number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
       
+      # Step 2: Setup GitHub token for API access
       - name: Generate GitHub token
         id: generate-token
         run: |
           echo "token=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_OUTPUT
       
+      # Step 3: Check for linked issues using GitHub CLI
       - name: Check if PR is linked to an issue
         id: check-linked-issue
         run: |
           PR_NUMBER=${{ steps.setup.outputs.pr_number }}
           REPO=${{ github.repository }}
+          
+          # Start collapsible log group for better readability
           echo "::group::Checking PR #$PR_NUMBER for linked issues"
           echo "::notice title=PR Validation::Checking linked issues for PR #$PR_NUMBER"
-          # Use gh pr view to get closing issues references
+          
+          # Use GitHub CLI to fetch closing issues references
           RESULT=$(gh pr view $PR_NUMBER --repo "$REPO" --json closingIssuesReferences)
           ISSUE_COUNT=$(echo "$RESULT" | jq '.closingIssuesReferences | length')
+          
+          # ----------------------------------------------------------------
+          # Validate linked issues
+          # ----------------------------------------------------------------
           if [ "$ISSUE_COUNT" -gt 0 ]; then
+            # Success: Linked issues found
             echo "✅ Found $ISSUE_COUNT linked issue(s)"
             echo "$RESULT" | jq -r '.closingIssuesReferences[] | "  • Issue #\(.number): \(.title) (\(.url))"'
-            # Extract first issue number for further validation
+            
+            # Extract first issue number for potential downstream validation
             ISSUE_NUMBER=$(echo "$RESULT" | jq '.closingIssuesReferences[0].number')
             echo "::notice title=Linked Issue Found::Using issue #$ISSUE_NUMBER for downstream validation"
             echo "issue_number=$ISSUE_NUMBER" >> $GITHUB_OUTPUT
             echo "::endgroup::"
             exit 0
           else
+            # Failure: No linked issues detected
             echo "::endgroup::"
             echo "::notice title=Linked Issue Missing::No linked issues detected for PR #$PR_NUMBER"
             echo "::error title=Validation Failed: Missing Linked Issue::❌ This PR is not linked to any issue."
