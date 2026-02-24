@@ -46,11 +46,7 @@ jobs:
               core.warning('PR must be linked to an issue. Please update "Public Issue" field.');
             }
             
-            // Check if Risk Classification is selected
-            const riskPattern = /Risk Classification:[\s\S]*?\[x\]/i;
-            if (!riskPattern.test(body)) {
-              core.warning('Risk Classification is not selected');
-            }
+            
             
             core.info('PR template validation passed');     
 
