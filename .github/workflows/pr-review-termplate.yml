@@ -7,6 +7,9 @@ on:
   pull_request_review:
     types: [submitted]
 
+permissions:
+  contents: read
+
 jobs:
   # ============================================================================
   # Job 1: Validate PR Template Structure
@@ -175,13 +178,7 @@ jobs:
         run: |
           echo "pr_number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
       
-      # Step 2: Setup GitHub token for API access
-      - name: Generate GitHub token
-        id: generate-token
-        run: |
-          echo "token=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_OUTPUT
-      
-      # Step 3: Check for linked issues using GitHub CLI
+      # Step 2: Check for linked issues using GitHub CLI
       - name: Check if PR is linked to an issue
         id: check-linked-issue
         run: |
@@ -226,4 +223,4 @@ jobs:
             exit 1
           fi
         env:
-          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
