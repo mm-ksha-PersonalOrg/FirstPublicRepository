@@ -8,7 +8,10 @@ on:
     types: [submitted]
 
 permissions:
-  contents: read
+  contents: read  
+  pull-requests: read
+  issues: read
+
 
 jobs:
   # ============================================================================
@@ -31,10 +34,6 @@ jobs:
             // Define required sections that must be present in the PR description
             const requiredSections = [
               'Pull Request Information',
-              'Internal ID:',
-              'Private Issue:',
-              'Public Issue:',
-              'Branch Protection Requirements',
               'Definition of Done Checklist'
             ];
             
@@ -44,16 +43,6 @@ jobs:
             if (missingSections.length > 0) {
               core.setFailed(`PR description is missing required sections: ${missingSections.join(', ')}`);
               return;
-            }
-            
-            // Validate that Internal ID field has been filled out
-            if (body.includes('[Internal tracking ID]')) {
-              core.warning('Internal ID is not filled in');
-            }
-            
-            // Validate that issue linking fields are properly filled
-            if (body.includes('Fixes #[issue number]') || body.includes('[issue number]')) {
-              core.warning('PR must be linked to an issue. Please update "Public Issue" field.');
             }
             
             core.info('PR template validation passed');
@@ -99,18 +88,14 @@ jobs:
             // ----------------------------------------------------------------
             // Identify items marked as "not required" using strikethrough (~)
             // ----------------------------------------------------------------
-            // Pattern 1: Checkbox followed by strikethrough text
-            // Example: - [ ] ~Optional item~
-            const strikethroughPattern = /-\s*\[[x\s]*\]\s*~[^~]+~/gi;
-            const notRequiredItems = (dodContent.match(strikethroughPattern) || []).length;
             
-            // Pattern 2: Entire line with strikethrough
+            // Pattern : Entire line with strikethrough
             // Example: ~- [ ] Optional item~
             const altStrikethroughPattern = /~\s*-\s*\[[x\s]*\][^~]+~/gi;
-            const notRequiredItemsAlt = (dodContent.match(altStrikethroughPattern) || []).length;
-            
+
             // Total optional items to exclude from completion calculation
-            const totalNotRequired = notRequiredItems + notRequiredItemsAlt;
+            const totalNotRequired = (dodContent.match(altStrikethroughPattern) || []).length;    
+            
             
             // ----------------------------------------------------------------
             // Calculate completion rate based on required items only
@@ -177,6 +162,7 @@ jobs:
         id: setup
         run: |
           echo "pr_number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+      
       
       # Step 2: Check for linked issues using GitHub CLI
       - name: Check if PR is linked to an issue
